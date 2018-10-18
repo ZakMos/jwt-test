@@ -12,12 +12,16 @@ const bcrypt      = require("bcrypt");
 const jwt         = require('jsonwebtoken'); // used to create, sign, and verfy tokens
 const config      = require('./config'); // get our config file
 const User        = require('./app/models/user'); //get our mongoose models
+const Role        = require('./app/models/role'); // get our role models
 const Schema      = mongoose.Schema;
 //=======================
 // configuration ========
 // ======================
 const port = process.env.PORT || 8080; // used to create, sign, and verfy tokens
-mongoose.connect(config.database, { useNewUrlParser: true }); // connect to database
+mongoose.connect(config.database, {
+  useNewUrlParser: true,
+  useCreateIndex: true
+ }); // connect to database
 app.set('superSecret', config.secret); //secret variable
 
 
@@ -50,8 +54,22 @@ app.get('/api', function(req, res){
 
 
 
-app.post('/register', (req, res) => {
+/// users roles
+app.post('/roles', (req, res) => {
+    let newRole = new Role({
+      name: req.body.name
+    });
+    newRole.save((err) => {
+      if (err) throw err;
+      console.log('Role granted sucessfully');
+      res.json({ success: true});
+    });
+});
 
+
+// users register
+
+app.post('/register', (req, res) => {
   let hashPass = req.body.password;
   let saltRounds = 10;
   bcrypt
@@ -63,13 +81,14 @@ app.post('/register', (req, res) => {
   })
   .then(hash => {
     console.log(`Hash: ${hash}`)
-    let user1 = new User({
+    let newUser = new User({
       name: req.body.name,
+      email: req.body.email,
       password: hash,
-      admin: true
+      role: req.body.role
     });
     // save the sample User
-    user1.save(function(err){
+    newUser.save(function(err){
       if (err) throw err;
       console.log('User saved sucessfully');
       res.json({ success: true });
@@ -89,15 +108,15 @@ apiRoutes.post('/authenticate', function(req, res){
 
   // find the user
   User.findOne({
-    name: req.body.name
+    email: req.body.email
   }, function(err, user){
     if (err) throw err;
     if(!user){
+
       res.json({ success: false, message: 'Authentication failed. User not found.'});
     } else if (user) {
       //check if password mathces
       bcrypt.compare(req.body.password, user.password,(err, isMatch) =>  {
-        console.log(res);
         if(!isMatch){
           res.json({success: false, message: 'Authentication failed. Wrong password.'});
       } else {
@@ -105,7 +124,7 @@ apiRoutes.post('/authenticate', function(req, res){
         // create a token with only our given payload
         // we don't want to pass in the entire user since that has the password
         const payload = {
-          admin: user.admin, user: user.name, password: user.password
+          role: user.role, user: user.name, email: user.email, password: user.password
         };
         const token = jwt.sign(payload, app.get('superSecret'), {
           expiresIn: 1440 // expires in 24 hous
